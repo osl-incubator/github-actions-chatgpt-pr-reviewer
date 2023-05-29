@@ -1,0 +1,29 @@
+name: Test Action
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  chatgpt-pr-reviewer:
+    runs-on: ubuntu-latest
+    name: Use ChatGPT for PR review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Fetch num squared
+        id: chatgpt_pr_reviewer
+        uses: ./ # Uses an action in the root directory
+        # or use a released Github Action
+        # uses: osl-incubator/github-action/github-actions-chatgpt-pr-reviewer@1.0.0
+        with:
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          openai_engine: 'gpt-3.5-turbo'
+          openai_temperature: 0.5
+          openai_max_tokens: 4096
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print the result
+        run: |
+          echo "${{ steps.chatgpt_pr_reviewer.outputs.chatgpt_result }}"
