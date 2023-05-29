@@ -22,6 +22,10 @@ inputs:
     description: 'Github API Key'
     required: true
     default: ''
+  github_pr_id:
+    description: 'Github PR ID'
+    required: true
+    default: ''
 runs:
   using: 'composite'
   steps:
@@ -31,7 +35,7 @@ runs:
         python-version: '3.10'
     - name: Install Dependencies
       shell: bash
-      run: pip install -r requirements.txt
+      run: pip install -r conda/requirements.txt
 
     - name: Pass Inputs to Shell
       shell: bash
@@ -41,8 +45,9 @@ runs:
           echo "OPENAI_TEMPERATURE=${{ inputs.openai_temperature }}" >> $GITHUB_ENV
           echo "OPENAI_MAX_TOKENS=${{ inputs.openai_max_tokens }}" >> $GITHUB_ENV
           echo "GITHUB_TOKEN=${{ inputs.github_token }}" >> $GITHUB_ENV
+          echo "GITHUB_PR_ID=${{ inputs.github_pr_id }}" >> $GITHUB_ENV
 
-    - name: Fetch the number's square
+    - name: GitHub ChatGPT PR Reviewer
       shell: bash
       id: run-reviewer
       run: python src/gha_gpt_pr_reviewer.py
