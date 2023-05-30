@@ -29,8 +29,8 @@ class GitHubChatGPTPullRequestReviewer:
 
     def _config_openai(self):
         openai_model_default = "gpt-3.5-turbo"
-        openai_temperature_default = 0.5
-        openai_max_tokens_default = 4096
+        openai_temperature_default = 0
+        openai_max_tokens_default = 2048
 
         openai_api_key = os.environ.get("OPENAI_API_KEY")
         os.environ["OPENAI_API_KEY"] = openai_api_key
@@ -122,15 +122,16 @@ class GitHubChatGPTPullRequestReviewer:
                 chat_completion = openai.ChatCompletion.create(
                     model=self.openai_model,
                     temperature=float(self.openai_temperature),
-                    max_tokens=2000,
+                    max_tokens=int(self.openai_max_tokens or self.openai_max_tokens_default),
                     messages=system_message + messages
                 )
                 results.append(
-                    f"{filename}:\n{chat_completion.choices[0].message.content}\n\n"
+                    f"### {filename}:{chat_completion.choices[0].message.content}\n\n"
                 )
             except Exception as e:
                 results.append(
-                    f"ChatGPT was not able to review {filename}. Error: {html.escape(str(e))}"
+                    f"### {filename}\nChatGPT was not able to review the file."
+                    f" Error: {html.escape(str(e))}"
                 )
 
         return results
