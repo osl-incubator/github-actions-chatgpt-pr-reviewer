@@ -125,7 +125,9 @@ class GitHubChatGPTPullRequestReviewer:
                     max_tokens=2000,
                     messages=system_message + messages
                 )
-                results.append(chat_completion.choices[0].message.content)
+                results.append(
+                    f"{filename}:\n{chat_completion.choices[0].message.content}\n\n"
+                )
             except Exception as e:
                 results.append(
                     f"ChatGPT was not able to review {filename}. Error: {html.escape(str(e))}"
