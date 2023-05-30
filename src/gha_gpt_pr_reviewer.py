@@ -45,14 +45,17 @@ class GitHubChatGPTPullRequestReviewer:
             contains the diff from the PR with all the proposal changes and you
             need to take a time to analyze and check if the diff looks good, or
             if you see any way to improve the PR, you will return any suggestion
-            in order to improve the code or fix issues, using the following criteria:
-            - suggest any best practice that would improve the changes
+            in order to improve the code or fix issues, using the following
+            criteria for recommendation:
+            - best practice that would improve the changes
             - code style formatting
             - recommendation specific for that programming language
-            - recommendation to improve performance
-            - recommendation for improvements from the software engineering perspective
+            - performance improvement
+            - improvements from the software engineering perspective
+            - docstrings, when it applies
 
             Please, return your response in markdown format.
+            If the changes presented by the diff looks good, just say: "LGTM!"
         """.strip()
 
     def get_pr_content(self):
@@ -109,12 +112,17 @@ class GitHubChatGPTPullRequestReviewer:
             message_diff = f"file: ```{filename}```\ndiff: ```{diff}```"
             messages = [{"role": "user", "content": message_diff}]
 
+            print(
+                "Estimated number of tokens: ",
+                len(self.chatgpt_initial_instruction + message_diff) / 4
+            )
+
             try:
                 # create a chat completion
                 chat_completion = openai.ChatCompletion.create(
                     model=self.openai_model,
                     temperature=float(self.openai_temperature),
-                    max_tokens=int(self.openai_max_tokens or self.openai_max_tokens_default),
+                    max_tokens=3000,
                     messages=system_message + messages
                 )
                 results.append(chat_completion.choices[0].message.content)
