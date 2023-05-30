@@ -13,7 +13,7 @@ inputs:
   openai_temperature:
     description: 'Temperature fo randomness, 0 is more conservative and 1 is more creative.'
     required: false
-    default: '0'
+    default: '0.5'
   openai_max_tokens:
     description: 'The maximum number of tokens to generate in the completion.'
     required: false

@@ -29,7 +29,7 @@ class GitHubChatGPTPullRequestReviewer:
 
     def _config_openai(self):
         openai_model_default = "gpt-3.5-turbo"
-        openai_temperature_default = 0
+        openai_temperature_default = 0.5
         openai_max_tokens_default = 2048
 
         openai_api_key = os.environ.get("OPENAI_API_KEY")
@@ -126,7 +126,7 @@ class GitHubChatGPTPullRequestReviewer:
                     messages=system_message + messages
                 )
                 results.append(
-                    f"### {filename}:{chat_completion.choices[0].message.content}\n\n"
+                    f"### {filename}\n\n{chat_completion.choices[0].message.content}\n\n---"
                 )
             except Exception as e:
                 results.append(
@@ -140,7 +140,7 @@ class GitHubChatGPTPullRequestReviewer:
     def comment_review(self, review: list):
         repo = self.gh_api.get_repo(self.gh_repo_name)
         pull_request = repo.get_pull(int(self.gh_pr_id))
-        pull_request.create_issue_comment('\n\n'.join(review))
+        pull_request.create_issue_comment('\n'.join(review))
 
     def run(self):
         pr_diff = self.get_diff()
