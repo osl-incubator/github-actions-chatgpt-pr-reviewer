@@ -6,10 +6,10 @@ inputs:
     description: 'OpenAI API Key'
     required: true
     default: ''
-  openai_engine:
-    description: 'OpenAI Engine'
+  openai_model:
+    description: 'OpenAI Model'
     required: false
-    default: 'text-davinci-002'
+    default: 'gpt-3.5-turbo'
   openai_temperature:
     description: 'Temperature fo randomness, 0 is more conservative and 1 is more creative.'
     required: false
@@ -22,6 +22,10 @@ inputs:
     description: 'Github API Key'
     required: true
     default: ''
+  github_pr_id:
+    description: 'Github PR ID'
+    required: true
+    default: ''
 runs:
   using: 'composite'
   steps:
@@ -31,18 +35,19 @@ runs:
         python-version: '3.10'
     - name: Install Dependencies
       shell: bash
-      run: pip install -r requirements.txt
+      run: pip install -r conda/requirements.txt
 
     - name: Pass Inputs to Shell
       shell: bash
       run: |
           echo "OPENAI_API_KEY=${{ inputs.openai_api_key }}" >> $GITHUB_ENV
-          echo "OPENAI_ENGINE=${{ inputs.openai_engine }}" >> $GITHUB_ENV
+          echo "OPENAI_MODEL=${{ inputs.openai_model }}" >> $GITHUB_ENV
           echo "OPENAI_TEMPERATURE=${{ inputs.openai_temperature }}" >> $GITHUB_ENV
           echo "OPENAI_MAX_TOKENS=${{ inputs.openai_max_tokens }}" >> $GITHUB_ENV
           echo "GITHUB_TOKEN=${{ inputs.github_token }}" >> $GITHUB_ENV
+          echo "GITHUB_PR_ID=${{ inputs.github_pr_id }}" >> $GITHUB_ENV
 
-    - name: Fetch the number's square
+    - name: GitHub ChatGPT PR Reviewer
       shell: bash
       id: run-reviewer
       run: python src/gha_gpt_pr_reviewer.py

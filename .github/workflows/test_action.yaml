@@ -12,17 +12,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Fetch num squared
+      - name: Review PR diff
         id: chatgpt_pr_reviewer
         uses: ./ # Uses an action in the root directory
         # or use a released Github Action
         # uses: osl-incubator/github-action/github-actions-chatgpt-pr-reviewer@1.0.0
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          openai_engine: 'gpt-3.5-turbo'
+          openai_model: 'gpt-3.5-turbo'
           openai_temperature: 0.5
-          openai_max_tokens: 4096
+          openai_max_tokens: 2048
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_pr_id: ${{ github.event.number }}
 
       - name: Print the result
         run: |
