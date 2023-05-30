@@ -122,7 +122,7 @@ class GitHubChatGPTPullRequestReviewer:
                 chat_completion = openai.ChatCompletion.create(
                     model=self.openai_model,
                     temperature=float(self.openai_temperature),
-                    max_tokens=3000,
+                    max_tokens=2000,
                     messages=system_message + messages
                 )
                 results.append(chat_completion.choices[0].message.content)
