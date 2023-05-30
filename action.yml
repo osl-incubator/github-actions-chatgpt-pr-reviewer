@@ -6,10 +6,10 @@ inputs:
     description: 'OpenAI API Key'
     required: true
     default: ''
-  openai_engine:
-    description: 'OpenAI Engine'
+  openai_model:
+    description: 'OpenAI Model'
     required: false
-    default: 'text-davinci-002'
+    default: 'gpt-3.5-turbo'
   openai_temperature:
     description: 'Temperature fo randomness, 0 is more conservative and 1 is more creative.'
     required: false
@@ -41,7 +41,7 @@ runs:
       shell: bash
       run: |
           echo "OPENAI_API_KEY=${{ inputs.openai_api_key }}" >> $GITHUB_ENV
-          echo "OPENAI_ENGINE=${{ inputs.openai_engine }}" >> $GITHUB_ENV
+          echo "OPENAI_MODEL=${{ inputs.openai_model }}" >> $GITHUB_ENV
           echo "OPENAI_TEMPERATURE=${{ inputs.openai_temperature }}" >> $GITHUB_ENV
           echo "OPENAI_MAX_TOKENS=${{ inputs.openai_max_tokens }}" >> $GITHUB_ENV
           echo "GITHUB_TOKEN=${{ inputs.github_token }}" >> $GITHUB_ENV

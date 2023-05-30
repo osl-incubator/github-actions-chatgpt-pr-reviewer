@@ -1,3 +1,4 @@
+import html
 import os
 
 from github import Github
@@ -44,11 +45,14 @@ class GitHubChatGPTPullRequestReviewer:
             contains the diff from the PR with all the proposal changes and you
             need to take a time to analyze and check if the diff looks good, or
             if you see any way to improve the PR, you will return any suggestion
-            in order to improve, fix issues or suggest any best practice like
-            code style formatting or any recommendation specific for that
-            programming language, or text format. Also, check and comment any
-            improvement from the software engineer perspective.
-            Please return your response in markdown format.
+            in order to improve the code or fix issues, using the following criteria:
+            - suggest any best practice that would improve the changes
+            - code style formatting
+            - recommendation specific for that programming language
+            - recommendation to improve performance
+            - recommendation for improvements from the software engineering perspective
+
+            Please, return your response in markdown format.
         """.strip()
 
     def get_pr_content(self):
@@ -64,7 +68,7 @@ class GitHubChatGPTPullRequestReviewer:
         content = self.get_pr_content()
 
         if len(content) == 0:
-            pull_request.create_issue_comment(f"Diff does not contain any changes")
+            pull_request.create_issue_comment(f"PR does not contain any changes")
             return ""
 
         parsed_text = content.split("diff")
@@ -85,7 +89,7 @@ class GitHubChatGPTPullRequestReviewer:
                 files_diff[file_name] = "\n".join(content)
 
             file_name = diff_text.split("b/")[1].splitlines()[0]
-            content = []
+            content = [diff_text]
 
         if file_name and content:
             files_diff[file_name] = "\n".join(content)
@@ -114,8 +118,10 @@ class GitHubChatGPTPullRequestReviewer:
                     messages=system_message + messages
                 )
                 results.append(chat_completion.choices[0].message.content)
-            except Exception:
-                results.append(f"ChatGPT was not able to review {filename}.")
+            except Exception as e:
+                results.append(
+                    f"ChatGPT was not able to review {filename}. Error: {html.escape(str(e))}"
+                )
 
         return results
 
@@ -129,7 +135,6 @@ class GitHubChatGPTPullRequestReviewer:
         pr_diff = self.get_diff()
         review = self.pr_review(pr_diff)
         self.comment_review(review)
-
 
 
 if __name__ == "__main__":
