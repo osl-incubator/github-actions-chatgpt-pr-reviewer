@@ -27,27 +27,12 @@ inputs:
     required: true
     default: ''
 runs:
-  using: 'composite'
-  steps:
-    - name: Install Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    - name: Install Dependencies
-      shell: bash
-      run: pip install "openai==0.27.*" "PyGithub~=1.57" "requests~=2.28.2"
-
-    - name: Pass Inputs to Shell
-      shell: bash
-      run: |
-          echo "OPENAI_API_KEY=${{ inputs.openai_api_key }}" >> $GITHUB_ENV
-          echo "OPENAI_MODEL=${{ inputs.openai_model }}" >> $GITHUB_ENV
-          echo "OPENAI_TEMPERATURE=${{ inputs.openai_temperature }}" >> $GITHUB_ENV
-          echo "OPENAI_MAX_TOKENS=${{ inputs.openai_max_tokens }}" >> $GITHUB_ENV
-          echo "GITHUB_TOKEN=${{ inputs.github_token }}" >> $GITHUB_ENV
-          echo "GITHUB_PR_ID=${{ inputs.github_pr_id }}" >> $GITHUB_ENV
-
-    - name: GitHub ChatGPT PR Reviewer
-      shell: bash
-      id: run-reviewer
-      run: python src/gha_gpt_pr_reviewer.py
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.openai_api_key }}
+    - ${{ inputs.openai_model }}
+    - ${{ inputs.openai_temperature }}
+    - ${{ inputs.openai_max_tokens }}
+    - ${{ inputs.github_token }}
+    - ${{ inputs.github_pr_id }}
