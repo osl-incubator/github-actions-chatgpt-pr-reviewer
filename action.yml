@@ -30,6 +30,11 @@ inputs:
     description: 'Github PR ID'
     required: true
     default: ''
+
+branding:
+  icon: check-circle
+  color: green
+
 runs:
   using: 'docker'
   image: 'Dockerfile'
