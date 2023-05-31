@@ -23,8 +23,8 @@ jobs:
           openai_temperature: 0.5
           openai_max_tokens: 2048
           openai_extra_criteria: |  # optional, use `;` for separate the criteria items
-            - prefer readable variable name instead of short names like `k` and `v`;
-            - use `SOLID` principles design pattern as reference in your review;
+            - prefer readable variable name instead of short names like `k` and `v`, when apply;
+            - verify `SOLID` principles design pattern violations, when apply;
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
 
