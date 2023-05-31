@@ -18,6 +18,10 @@ inputs:
     description: 'The maximum number of tokens to generate in the completion.'
     required: false
     default: '2048'
+  openai_extra_criteria:
+    description: 'Add extra criteria for the PR reviewer. Split your criteria with `;`'
+    required: false
+    default: ''
   github_token:
     description: 'Github API Key'
     required: true
@@ -34,5 +38,6 @@ runs:
     - ${{ inputs.openai_model }}
     - ${{ inputs.openai_temperature }}
     - ${{ inputs.openai_max_tokens }}
+    - ${{ inputs.openai_extra_criteria }}
     - ${{ inputs.github_token }}
     - ${{ inputs.github_pr_id }}
