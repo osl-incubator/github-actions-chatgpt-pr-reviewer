@@ -163,8 +163,7 @@ class GitHubChatGPTPullRequestReviewer:
     def run(self):
         pr_diff = self.get_diff()
         review = self.pr_review(pr_diff)
-        print(review)
-        #self.comment_review(review)
+        self.comment_review(review)
 
 
 if __name__ == "__main__":
