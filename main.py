@@ -28,7 +28,7 @@ class GitHubChatGPTPullRequestReviewer:
         self.gh_api = Github(self.gh_token)
 
     def _config_openai(self):
-        openai_model_default = "gpt-3.5-turbo"
+        openai_model_default = "gpt-4-1106-preview"
         openai_temperature_default = 0.5
         openai_max_tokens_default = 2048
         openai_extra_criteria_default = ""
