@@ -9,7 +9,7 @@ inputs:
   openai_model:
     description: 'OpenAI Model'
     required: false
-    default: 'gpt-4.0-turbo'
+    default: 'gpt-4-1106-preview'
   openai_temperature:
     description: 'Temperature fo randomness, 0 is more conservative and 1 is more creative.'
     required: false
