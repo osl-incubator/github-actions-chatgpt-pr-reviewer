@@ -30,7 +30,7 @@ jobs:
             | # optional, use `;` for separate the criteria items
             - prefer readable variable name instead of short names like `k` and `v`, when apply;
             - verify `SOLID` principles design pattern violations, when apply;
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GH_TOKEN }}
           github_pr_id: ${{ github.event.number }}
 
       - name: Print the result
