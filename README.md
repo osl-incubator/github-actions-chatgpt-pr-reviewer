@@ -12,7 +12,7 @@ Include the following into your github actions step
         uses: osl-incubator/github-actions-chatgpt-pr-reviewer@1.0.3
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}  # required
-          openai_model: 'gpt-4-1106-preview'  # optional
+          openai_model: 'gpt-4o-mini'  # optional
           openai_temperature: 0.5  # optional
           openai_max_tokens: 2048  # optional
           openai_extra_criteria: |  # optional, use `;` for separate the criteria items
