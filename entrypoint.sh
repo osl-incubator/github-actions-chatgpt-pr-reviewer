@@ -1,13 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -ex
+OPENAI_API_KEY="${1:-}"
+OPENAI_MODEL="${2:-}"
+OPENAI_TEMPERATURE="${3:-}"
+OPENAI_MAX_TOKENS="${4:-}"
+OPENAI_EXTRA_CRITERIA="${5:-}"
+GITHUB_TOKEN_IN="${6:-}"
+GITHUB_PR_ID_IN="${7:-}"
 
-export OPENAI_API_KEY="$1"
-export OPENAI_MODEL="$2"
-export OPENAI_TEMPERATURE="$3"
-export OPENAI_MAX_TOKENS="$4"
-export OPENAI_EXTRA_CRITERIA="$5"
-export GITHUB_TOKEN="$6"
-export GITHUB_PR_ID="$7"
+export OPENAI_API_KEY
+export OPENAI_MODEL
+export OPENAI_TEMPERATURE
+export OPENAI_MAX_TOKENS
+export OPENAI_EXTRA_CRITERIA
 
-python /main.py
+export GITHUB_TOKEN="${GITHUB_TOKEN_IN:-${GITHUB_TOKEN:-}}"
+export GITHUB_PR_ID="${GITHUB_PR_ID_IN:-${GITHUB_PR_ID:-}}"
+
+: "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+: "${GITHUB_PR_ID:?GITHUB_PR_ID is required}"
+
+exec python /main.py
