@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 export OPENAI_API_KEY="$1"
 export OPENAI_MODEL="$2"
 export OPENAI_TEMPERATURE="$3"
