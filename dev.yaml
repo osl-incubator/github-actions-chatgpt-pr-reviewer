@@ -1,9 +1,10 @@
-name: gha-gpt-pr-reviewer
+name: gha-reviewer
 channels:
   - nodefaults
   - conda-forge
 dependencies:
-  - python 3.10
+  - python 3.13
   - pip
   - pip:
-    - -r requirements.txt
+      - -r requirements.txt
+      - poetry

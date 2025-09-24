@@ -1,0 +1,106 @@
+[project]
+name = "gha-reviewer"
+version = "0.1.0"  # semantic-release
+description = "GitHub Actions Reviewer with AI"
+authors = [
+  {name = "Ivan Ogasawara", email = "ivan.ogasawara@gmail.com"}
+]
+license = "BSD 3 Clause"
+repository = "https://github.com/osl-incubator/github-actions-chatgpt-pr-reviewer"
+homepage = "https://github.com/osl-incubator/github-actions-chatgpt-pr-reviewer"
+readme = "README.md"
+requires-python = ">=3.9,<4"
+dependencies = [
+  "openai>=1,<2",
+  "PyGithub>=2,<3",
+  "requests>=2.32,<3",
+]
+exclude = [
+  ".git/*",
+  ".env*",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7"
+pre-commit = ">=3"
+mypy = ">=1"
+ruff = ">=0.1.5"
+bandit = ">=1.7.5"
+vulture = ">=2.7"
+pytest-cov = ">=3.0.0"
+mkdocs = ">=1.3"
+mkdocs-exclude = ">=1.0.2"
+mkdocs-jupyter = ">=0.24.7"
+mkdocs-literate-nav = ">=0.4.1"
+mkdocs-macros-plugin = ">=0.6.3"
+mkdocs-material = ">=8"
+mkdocstrings = {version=">=0.19.0", extras=["python"]}
+pymdown-extensions = ">=10.7.1"
+
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+show_error_codes = true
+
+
+[tool.ruff]
+line-length = 79
+force-exclude = true
+src = ["./src/makim", "./tests"]
+exclude = [
+  "docs",
+]
+fix = true
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "D",   # pydocstyle
+  "YTT", # flake8-2020
+  "PL",  # PL
+  "RUF", # Ruff-specific rules
+  "I001", # isort
+  "I002", # isort
+]
+ignore = ["RUF012"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+# Use a single line between direct and from import
+lines-between-types = 1
+
+[tool.ruff.format]
+quote-style = "single"
+
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+targets = "./*"
+skips = ["B102", "B701", "B507", "B601", "B603"]
+
+[tool.vulture]
+exclude = ["tests"]
+ignore_decorators = []
+ignore_names = ["verbose", "dry_run", "skip_hooks"]
+make_whitelist = true
+min_confidence = 80
+paths = ["src/makim/"]
+sort_by_size = true
+verbose = false
