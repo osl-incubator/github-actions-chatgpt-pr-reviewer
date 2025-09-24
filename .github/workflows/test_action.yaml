@@ -7,9 +7,6 @@ on:
 permissions:
   contents: write
 
-env:
-  GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
 jobs:
   chatgpt-pr-reviewer:
     runs-on: ubuntu-latest
@@ -29,10 +26,10 @@ jobs:
           openai_model: "gpt-4-1106-preview"
           openai_temperature: 0.5
           openai_max_tokens: 2048
-          openai_extra_criteria:
-            | # optional, use `;` for separate the criteria items
-            - prefer readable variable name instead of short names like `k` and `v`, when apply;
-            - verify `SOLID` principles design pattern violations, when apply;
+          # optional, use `;` for separate the criteria items
+          openai_extra_criteria: |
+            prefer readable variable name instead of short names like `k` and `v`, when apply;
+            verify `SOLID` principles design pattern violations, when apply;
           github_token: ${{ secrets.GH_TOKEN }}
           github_pr_id: ${{ github.event.number }}
 
