@@ -7,6 +7,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
 jobs:
   chatgpt-pr-reviewer:
     runs-on: ubuntu-latest
