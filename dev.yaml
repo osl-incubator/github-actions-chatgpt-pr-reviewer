@@ -6,5 +6,5 @@ dependencies:
   - python 3.13
   - pip
   - pip:
-    - -r requirements.txt
-    - pytest
+      - -r requirements.txt
+      - poetry
