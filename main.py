@@ -4,7 +4,7 @@ import fnmatch
 import html
 import os
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import requests
 
@@ -45,28 +45,58 @@ def _split_globs(raw: str) -> List[str]:
     return parts
 
 
+def _is_binary_diff(diff_text: str) -> bool:
+    """Return True if a diff chunk represents a binary change."""
+    t = diff_text.lower()
+    if 'git binary patch' in t:
+        return True
+    if 'binary files ' in t:
+        return True
+    return False
+
+
 class GitHubChatGPTPullRequestReviewer:
     """GitHubChatGPTPullRequestReviewer class."""
 
+    # Attribute type hints help mypy across methods.
+    gh_pr_id: str
+    gh_repo_name: str
+    gh_pr_url: str
+    gh_headers: Dict[str, str]
+    gh_api: Github
+
+    openai_model: str
+    openai_temperature: float
+    openai_max_tokens: int
+    openai_max_completion_tokens: int
+    openai_reasoning_mode: str
+    openai_reasoning_effort: str
+    _openai: OpenAI
+
+    exclude_globs: List[str]
+    chatgpt_initial_instruction: str
+
     def __init__(self) -> None:
         """Initialize the class."""
-        self.exclude_globs: List[str] = []
+        self.exclude_globs = []
         self._config_gh()
         self._config_openai()
 
     def _config_gh(self) -> None:
         """Configure GitHub context."""
-        self.gh_pr_id = os.environ.get('GITHUB_PR_ID')
-        if not self.gh_pr_id:
+        gh_pr_id = os.environ.get('GITHUB_PR_ID')
+        if not gh_pr_id:
             raise RuntimeError('GITHUB_PR_ID is required')
+        self.gh_pr_id = gh_pr_id
 
         gh_token = os.environ.get('GITHUB_TOKEN')
         if not gh_token:
             raise RuntimeError('GITHUB_TOKEN is required')
 
-        self.gh_repo_name = os.environ.get('GITHUB_REPOSITORY')
-        if not self.gh_repo_name:
+        gh_repo_name = os.environ.get('GITHUB_REPOSITORY')
+        if not gh_repo_name:
             raise RuntimeError('GITHUB_REPOSITORY is required')
+        self.gh_repo_name = gh_repo_name
 
         gh_api_url = os.environ.get('GITHUB_API_URL', 'https://api.github.com')
         self.gh_pr_url = (
@@ -116,9 +146,7 @@ class GitHubChatGPTPullRequestReviewer:
 
         self.chatgpt_initial_instruction = (
             'You are a GitHub PR reviewer bot. You will receive a PR diff. '
-            'Write a short, high-signal review that focuses only on material '
-            'risks.\n\n'
-            'Prioritize, in order:\n'
+            'Write a short, high-signal review that focuses on:'
             '- correctness / logic bugs\n'
             '- security and unsafe patterns\n'
             '- performance regressions with real impact\n'
@@ -130,8 +158,16 @@ class GitHubChatGPTPullRequestReviewer:
             'Constraints:\n'
             '- Do not restate the diff or comment on formatting-only '
             'changes.\n'
-            '- Keep the whole review under ~250 words per file.\n'
-            '- If no high-impact issues, reply exactly: LGTM!\n\n'
+            '- If no high-impact issues, reply exactly: LGTM!\n'
+            '- If you want to suggest any code to be added or changed, '
+            'remember to use docstrings (just the title is required) '
+            'and type annotation, '
+            'when possible.\n'
+            '- Point the line number where the author should apply the '
+            'change inside parenthesis, e.g. (L.123).\n'
+            '- Do not summarize all the changes, just focus on your '
+            "suggestions to the PR's author. It should be short and "
+            'concise.\n\n'
             'Return Markdown only.'
         )
 
@@ -197,12 +233,16 @@ class GitHubChatGPTPullRequestReviewer:
                 bucket.append(part)
                 continue
             if file_name and bucket and not self._is_excluded(file_name):
-                files_diff[file_name] = '\n'.join(bucket)
+                chunk = '\n'.join(bucket)
+                if not _is_binary_diff(chunk):
+                    files_diff[file_name] = chunk
             file_name = part.split('b/')[1].splitlines()[0]
             bucket = [part]
 
         if file_name and bucket and not self._is_excluded(file_name):
-            files_diff[file_name] = '\n'.join(bucket)
+            chunk = '\n'.join(bucket)
+            if not _is_binary_diff(chunk):
+                files_diff[file_name] = chunk
 
         return files_diff
 
@@ -214,7 +254,7 @@ class GitHubChatGPTPullRequestReviewer:
 
         Some models require max_completion_tokens (reasoning).
         """
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             'model': self.openai_model,
             'messages': [
                 {'role': 'system', 'content': system_text},
@@ -234,15 +274,16 @@ class GitHubChatGPTPullRequestReviewer:
 
     def _call_openai_responses(self, system_text: str, user_text: str) -> str:
         """Call OpenAI Responses API for reasoning models."""
-        rsp = self._openai.responses.create(
-            model=self.openai_model,
-            reasoning={'effort': self.openai_reasoning_effort},
-            max_output_tokens=self.openai_max_completion_tokens,
-            input=[
+        kwargs: Dict[str, Any] = {
+            'model': self.openai_model,
+            'reasoning': {'effort': self.openai_reasoning_effort},
+            'max_output_tokens': self.openai_max_completion_tokens,
+            'input': [
                 {'role': 'system', 'content': system_text},
                 {'role': 'user', 'content': user_text},
             ],
-        )
+        }
+        rsp = self._openai.responses.create(**kwargs)
         text = getattr(rsp, 'output_text', None)
         if not text:
             try:
