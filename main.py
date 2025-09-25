@@ -115,21 +115,24 @@ class GitHubChatGPTPullRequestReviewer:
         )
 
         self.chatgpt_initial_instruction = (
-            'You are a GitHub PR reviewer bot. You will receive a text '
-            'containing the diff from a PR with all proposed changes. '
-            'Analyze it and return suggestions to improve or fix issues, '
-            'using the following criteria:\n'
-            '- best practices that would improve the changes\n'
-            '- code style formatting\n'
-            '- recommendations specific to the programming language\n'
-            '- performance improvements\n'
-            '- improvements from the software engineering perspective\n'
-            '- docstrings, when applicable\n'
-            '- prefer explicit over implicit (e.g., in Python, avoid '
-            '`from x import *`)\n'
+            'You are a GitHub PR reviewer bot. You will receive a PR diff. '
+            'Write a short, high-signal review that focuses only on material '
+            'risks.\n\n'
+            'Prioritize, in order:\n'
+            '- correctness / logic bugs\n'
+            '- security and unsafe patterns\n'
+            '- performance regressions with real impact\n'
+            '- breaking API / behavior changes\n'
+            '- maintainability that affects future changes\n'
             f'{extra_criteria}\n'
-            'Return your response in Markdown. If everything looks good, '
-            'just say: "LGTM!"'
+            'Ignore minor style or preference nits unless they hide a bug or '
+            'the fix is a one-liner.\n\n'
+            'Constraints:\n'
+            '- Do not restate the diff or comment on formatting-only '
+            'changes.\n'
+            '- Keep the whole review under ~250 words per file.\n'
+            '- If no high-impact issues, reply exactly: LGTM!\n\n'
+            'Return Markdown only.'
         )
 
     def _want_reasoning(self) -> bool:
