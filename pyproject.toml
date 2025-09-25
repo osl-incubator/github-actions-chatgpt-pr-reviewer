@@ -60,7 +60,7 @@ show_error_codes = true
 [tool.ruff]
 line-length = 79
 force-exclude = true
-src = ["./src/makim", "./tests"]
+src = ["./", "./tests"]
 exclude = [
   "docs",
 ]
@@ -101,6 +101,6 @@ ignore_decorators = []
 ignore_names = ["verbose", "dry_run", "skip_hooks"]
 make_whitelist = true
 min_confidence = 80
-paths = ["src/makim/"]
+paths = ["./"]
 sort_by_size = true
 verbose = false
