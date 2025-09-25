@@ -19,6 +19,24 @@ inputs:
     }
   github_token: { description: "GitHub token", required: true }
   github_pr_id: { description: "PR number", required: true }
+  openai_reasoning:
+    description: "Use reasoning mode (on|off|auto). Auto detects by model name."
+    required: false
+    default: "auto"
+  openai_reasoning_effort:
+    description: "Reasoning effort if supported (low|medium|high)."
+    required: false
+    default: "medium"
+  openai_max_completion_tokens:
+    description: |
+      Max completion tokens (reasoning models / Chat API).
+      Also used as max_output_tokens for Responses API.
+    required: false
+    default: "2048"
+  exclude_path:
+    description: "Glob patterns to exclude (comma/; or newline separated)"
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -42,4 +60,8 @@ runs:
         OPENAI_EXTRA_CRITERIA: ${{ inputs.openai_extra_criteria }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_PR_ID: ${{ inputs.github_pr_id }}
+        OPENAI_REASONING: ${{ inputs.openai_reasoning }}
+        OPENAI_REASONING_EFFORT: ${{ inputs.openai_reasoning_effort }}
+        OPENAI_MAX_COMPLETION_TOKENS: ${{ inputs.openai_max_completion_tokens }}
+        EXCLUDE_PATH: ${{ inputs.exclude_path }}
       run: python "$GITHUB_ACTION_PATH/main.py"
