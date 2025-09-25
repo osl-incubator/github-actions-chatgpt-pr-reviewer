@@ -77,7 +77,7 @@ select = [
   "I001", # isort
   "I002", # isort
 ]
-ignore = ["RUF012"]
+ignore = ["RUF012", "PLR2004"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
