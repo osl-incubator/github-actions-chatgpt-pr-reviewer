@@ -1,48 +1,45 @@
-# action.yaml
-name: "GitHub Actions ChatGPT PR Reviewer"
-description: "A Github Action that uses ChatGPT to review PRs"
-inputs:
-  openai_api_key:
-    description: "OpenAI API Key"
-    required: true
-    default: ""
-  openai_model:
-    description: "OpenAI Model"
-    required: false
-    default: "gpt-4o-mini"
-  openai_temperature:
-    description: "Temperature fo randomness, 0 is more conservative and 1 is more creative."
-    required: false
-    default: "0.5"
-  openai_max_tokens:
-    description: "The maximum number of tokens to generate in the completion."
-    required: false
-    default: "2048"
-  openai_extra_criteria:
-    description: "Add extra criteria for the PR reviewer. Split your criteria with `;`"
-    required: false
-    default: ""
-  github_token:
-    description: "Github API Key"
-    required: true
-    default: ""
-  github_pr_id:
-    description: "Github PR ID"
-    required: true
-    default: ""
+# action.yml (composite)
+name: GitHub Actions ChatGPT PR Reviewer
+description: Review PRs with OpenAI
+branding: { icon: check-circle, color: green }
 
-branding:
-  icon: check-circle
-  color: green
+inputs:
+  openai_api_key: { description: "OpenAI API Key", required: true }
+  openai_model:
+    { description: "OpenAI Model", required: false, default: "gpt-4o-mini" }
+  openai_temperature:
+    { description: "Temperature", required: false, default: "0.0" }
+  openai_max_tokens:
+    { description: "Max tokens", required: false, default: "8000" }
+  openai_extra_criteria:
+    {
+      description: "Extra criteria (; separated)",
+      required: false,
+      default: "",
+    }
+  github_token: { description: "GitHub token", required: true }
+  github_pr_id: { description: "PR number", required: true }
 
 runs:
-  using: "docker"
-  image: "Dockerfile"
-  args:
-    - ${{ inputs.openai_api_key }}
-    - ${{ inputs.openai_model }}
-    - ${{ inputs.openai_temperature }}
-    - ${{ inputs.openai_max_tokens }}
-    - ${{ inputs.openai_extra_criteria }}
-    - ${{ inputs.github_token }}
-    - ${{ inputs.github_pr_id }}
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.13" }
+
+    - name: Install deps
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r "$GITHUB_ACTION_PATH/requirements.txt"
+
+    - name: Run reviewer
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        OPENAI_MODEL: ${{ inputs.openai_model }}
+        OPENAI_TEMPERATURE: ${{ inputs.openai_temperature }}
+        OPENAI_MAX_TOKENS: ${{ inputs.openai_max_tokens }}
+        OPENAI_EXTRA_CRITERIA: ${{ inputs.openai_extra_criteria }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_PR_ID: ${{ inputs.github_pr_id }}
+      run: python "$GITHUB_ACTION_PATH/main.py"
