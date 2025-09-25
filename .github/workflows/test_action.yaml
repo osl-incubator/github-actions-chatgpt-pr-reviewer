@@ -30,7 +30,3 @@ jobs:
           # Use the runtime token, not a custom secret
           github_token: ${{ github.token }}
           github_pr_id: ${{ github.event.pull_request.number }}
-
-      # (optional) you don't currently set outputs in the action
-      # - name: Print the result
-      #   run: echo done
