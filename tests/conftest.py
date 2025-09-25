@@ -3,6 +3,7 @@
 import os
 
 from pathlib import Path
+from typing import Dict
 
 import pytest
 
@@ -17,7 +18,7 @@ REQUIRED_ENV = (
 
 
 @pytest.fixture(scope='session', autouse=True)
-def load_env_from_dotenv():
+def load_env_from_dotenv() -> None:
     """
     Load variables from the first .env we can find (cwd, repo root, tests dir).
 
@@ -35,11 +36,12 @@ def load_env_from_dotenv():
 
 
 @pytest.fixture(scope='session')
-def ensure_required_env():
+def ensure_required_env() -> Dict[str, str]:
     """Ensure required environment."""
     missing = [k for k in REQUIRED_ENV if not os.getenv(k)]
     if missing:
         pytest.skip(
             f'Missing env vars for integration test: {", ".join(missing)}'
         )
-    return {k: os.getenv(k) for k in REQUIRED_ENV}
+    env: Dict[str, str] = {k: os.environ[k] for k in REQUIRED_ENV}
+    return env
