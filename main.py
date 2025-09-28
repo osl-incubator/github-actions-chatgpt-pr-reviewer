@@ -241,9 +241,16 @@ class GitHubChatGPTPullRequestReviewer:
             'Constraints:\n'
             '- Do not restate the diff or comment on formatting-only '
             'changes.\n'
-            '- Keep the whole review under ~250 words per file.\n'
-            '- If no high-impact issues, reply exactly: LGTM!\n\n'
-            'Return Markdown only.'
+            '- If no high-impact issues, reply exactly: LGTM!\n'
+            '- If you want to suggest any code to be added or changed, '
+            'remember to use docstrings (just the title is required) '
+            'and type annotation, '
+            'when possible.\n'
+            '- Point the line number where the author should apply the '
+            'change inside parenthesis, e.g. (L.123).\n'
+            '- Do not summarize all the changes, just focus on your '
+            "suggestions to the PR's author. It should be short and "
+            'concise.\n\n'
         )
 
         self._ctx_default = ctx_default
