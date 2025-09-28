@@ -69,20 +69,57 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _model_limits(model: str) -> Tuple[int, int]:  # noqa: PLR0911, PLR0912
+    """
+    Return default (context_max, max_output_tokens) for known models.
+
+    Values are based on OpenAI model specs. Unknown models fall back to
+    (128_000, 16_384).
+    """
+    m = model.lower()
+
+    if m.startswith('gpt-5-chat-latest'):
+        return 128_000, 16_384
+    if m.startswith('gpt-5'):
+        return 400_000, 128_000
+
+    if m.startswith('gpt-4.1-mini'):
+        return 1_047_576, 32_768
+    if m.startswith('gpt-4.1'):
+        return 1_047_576, 32_768
+
+    if m.startswith('chatgpt-4o-latest'):
+        return 128_000, 16_384
+    if m.startswith('gpt-4o-mini'):
+        return 128_000, 16_384
+    if m.startswith('gpt-4o'):
+        return 400_000, 128_000
+
+    if m.startswith('o3-mini'):
+        return 200_000, 100_000
+    if m.startswith('o3'):
+        return 200_000, 100_000
+    if m.startswith('o1-pro'):
+        return 200_000, 100_000
+    if m.startswith('o1'):
+        return 200_000, 100_000
+
+    if m.startswith('gpt-3.5-turbo-16k'):
+        return 16_000, 4_096
+    if m.startswith('gpt-3.5-turbo'):
+        return 4_096, 2_048
+
+    return 128_000, 16_384
+
+
 def _model_context_tokens(model: str) -> int:
     """
     Return an approximate context window for a model.
 
-    Values are conservative defaults; override via OPENAI_MAX_INPUT_TOKENS.
+    Values come from _model_limits and can be overridden by env.
     """
-    m = model.lower()
-    if m.startswith('gpt-3.5'):
-        return 16_000
-    if m.startswith('gpt-4-32k'):
-        return 32_000
-    if m.startswith(('o1', 'o2', 'o3', 'o4', 'o-')):
-        return 200_000
-    return 128_000
+    ctx, _ = _model_limits(model)
+    return ctx
 
 
 def _chunk_by_lines(text: str, max_tokens: int) -> List[str]:
@@ -154,11 +191,14 @@ class GitHubChatGPTPullRequestReviewer:
     def _config_openai(self) -> None:
         """Configure OpenAI client and prompts."""
         self.openai_model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+
+        ctx_default, out_default = _model_limits(self.openai_model)
+
         self.openai_temperature = float(
             os.environ.get('OPENAI_TEMPERATURE', '0.5')
         )
         self.openai_max_tokens = int(
-            os.environ.get('OPENAI_MAX_TOKENS', '2048')
+            os.environ.get('OPENAI_MAX_TOKENS', str(out_default))
         )
         self.openai_max_completion_tokens = int(
             os.environ.get(
@@ -206,6 +246,9 @@ class GitHubChatGPTPullRequestReviewer:
             'Return Markdown only.'
         )
 
+        self._ctx_default = ctx_default
+        self._out_default = out_default
+
     def _want_reasoning(self) -> bool:
         """Return True if reasoning mode should be used."""
         if self.openai_reasoning_mode == 'on':
@@ -244,7 +287,7 @@ class GitHubChatGPTPullRequestReviewer:
         context = (
             self.openai_max_input_tokens
             if self.openai_max_input_tokens > 0
-            else _model_context_tokens(self.openai_model)
+            else self._ctx_default
         )
         system_tokens = _estimate_tokens(self.chatgpt_initial_instruction)
         want_reason = self._want_reasoning()
