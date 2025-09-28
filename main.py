@@ -4,7 +4,7 @@ import fnmatch
 import html
 import os
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple, cast
 
 import requests
 
@@ -55,48 +55,86 @@ def _is_binary_diff(diff_text: str) -> bool:
     return False
 
 
+def _is_deleted_file(diff_text: str) -> bool:
+    """Return True if the diff indicates a full file deletion."""
+    if '\ndeleted file mode ' in diff_text:
+        return True
+    if '\n+++ /dev/null' in diff_text:
+        return True
+    return False
+
+
+def _estimate_tokens(text: str) -> int:
+    """Return a rough token estimate for a string."""
+    return max(1, len(text) // 4)
+
+
+def _model_context_tokens(model: str) -> int:
+    """
+    Return an approximate context window for a model.
+
+    Values are conservative defaults; override via OPENAI_MAX_INPUT_TOKENS.
+    """
+    m = model.lower()
+    if m.startswith('gpt-3.5'):
+        return 16_000
+    if m.startswith('gpt-4-32k'):
+        return 32_000
+    if m.startswith(('o1', 'o2', 'o3', 'o4', 'o-')):
+        return 200_000
+    return 128_000
+
+
+def _chunk_by_lines(text: str, max_tokens: int) -> List[str]:
+    """Split text into chunks that fit under max_tokens by line groups."""
+    lines = text.splitlines(keepends=True)
+    chunks: List[str] = []
+    buf: List[str] = []
+    count = 0
+    for ln in lines:
+        t = _estimate_tokens(ln)
+        if t > max_tokens:
+            if buf:
+                chunks.append(''.join(buf))
+                buf, count = [], 0
+            max_chars = max_tokens * 4
+            for i in range(0, len(ln), max_chars):
+                piece = ln[i : i + max_chars]
+                chunks.append(piece)
+            continue
+        if count + t > max_tokens and buf:
+            chunks.append(''.join(buf))
+            buf, count = [ln], t
+        else:
+            buf.append(ln)
+            count += t
+    if buf:
+        chunks.append(''.join(buf))
+    return chunks
+
+
 class GitHubChatGPTPullRequestReviewer:
     """GitHubChatGPTPullRequestReviewer class."""
 
-    # Attribute type hints help mypy across methods.
-    gh_pr_id: str
-    gh_repo_name: str
-    gh_pr_url: str
-    gh_headers: Dict[str, str]
-    gh_api: Github
-
-    openai_model: str
-    openai_temperature: float
-    openai_max_tokens: int
-    openai_max_completion_tokens: int
-    openai_reasoning_mode: str
-    openai_reasoning_effort: str
-    _openai: OpenAI
-
-    exclude_globs: List[str]
-    chatgpt_initial_instruction: str
-
     def __init__(self) -> None:
         """Initialize the class."""
-        self.exclude_globs = []
+        self.exclude_globs: List[str] = []
         self._config_gh()
         self._config_openai()
 
     def _config_gh(self) -> None:
         """Configure GitHub context."""
-        gh_pr_id = os.environ.get('GITHUB_PR_ID')
-        if not gh_pr_id:
+        self.gh_pr_id = os.environ.get('GITHUB_PR_ID')
+        if not self.gh_pr_id:
             raise RuntimeError('GITHUB_PR_ID is required')
-        self.gh_pr_id = gh_pr_id
 
         gh_token = os.environ.get('GITHUB_TOKEN')
         if not gh_token:
             raise RuntimeError('GITHUB_TOKEN is required')
 
-        gh_repo_name = os.environ.get('GITHUB_REPOSITORY')
-        if not gh_repo_name:
+        self.gh_repo_name = os.environ.get('GITHUB_REPOSITORY')
+        if not self.gh_repo_name:
             raise RuntimeError('GITHUB_REPOSITORY is required')
-        self.gh_repo_name = gh_repo_name
 
         gh_api_url = os.environ.get('GITHUB_API_URL', 'https://api.github.com')
         self.gh_pr_url = (
@@ -127,6 +165,9 @@ class GitHubChatGPTPullRequestReviewer:
                 'OPENAI_MAX_COMPLETION_TOKENS', str(self.openai_max_tokens)
             )
         )
+        self.openai_max_input_tokens = int(
+            os.environ.get('OPENAI_MAX_INPUT_TOKENS', '0')
+        )
 
         reasoning_mode_env = (
             os.environ.get('OPENAI_REASONING', 'auto').strip().lower()
@@ -138,7 +179,7 @@ class GitHubChatGPTPullRequestReviewer:
             'OPENAI_REASONING_EFFORT', 'medium'
         )
 
-        self._openai = OpenAI()
+        self._openai: Any = OpenAI()
 
         extra_criteria = self._prepare_extra_criteria(
             os.environ.get('OPENAI_EXTRA_CRITERIA', '').strip()
@@ -146,7 +187,9 @@ class GitHubChatGPTPullRequestReviewer:
 
         self.chatgpt_initial_instruction = (
             'You are a GitHub PR reviewer bot. You will receive a PR diff. '
-            'Write a short, high-signal review that focuses on:'
+            'Write a short, high-signal review that focuses only on material '
+            'risks.\n\n'
+            'Prioritize, in order:\n'
             '- correctness / logic bugs\n'
             '- security and unsafe patterns\n'
             '- performance regressions with real impact\n'
@@ -158,16 +201,8 @@ class GitHubChatGPTPullRequestReviewer:
             'Constraints:\n'
             '- Do not restate the diff or comment on formatting-only '
             'changes.\n'
-            '- If no high-impact issues, reply exactly: LGTM!\n'
-            '- If you want to suggest any code to be added or changed, '
-            'remember to use docstrings (just the title is required) '
-            'and type annotation, '
-            'when possible.\n'
-            '- Point the line number where the author should apply the '
-            'change inside parenthesis, e.g. (L.123).\n'
-            '- Do not summarize all the changes, just focus on your '
-            "suggestions to the PR's author. It should be short and "
-            'concise.\n\n'
+            '- Keep the whole review under ~250 words per file.\n'
+            '- If no high-impact issues, reply exactly: LGTM!\n\n'
             'Return Markdown only.'
         )
 
@@ -200,6 +235,26 @@ class GitHubChatGPTPullRequestReviewer:
             fnmatch.fnmatch(filename, pat) for pat in self.exclude_globs
         )
 
+    def _token_budgets(self) -> Tuple[int, int, int]:
+        """
+        Return (context_max, system_tokens, reply_tokens).
+
+        context_max is derived from model or OPENAI_MAX_INPUT_TOKENS.
+        """
+        context = (
+            self.openai_max_input_tokens
+            if self.openai_max_input_tokens > 0
+            else _model_context_tokens(self.openai_model)
+        )
+        system_tokens = _estimate_tokens(self.chatgpt_initial_instruction)
+        want_reason = self._want_reasoning()
+        reply = (
+            self.openai_max_completion_tokens
+            if want_reason
+            else self.openai_max_tokens
+        )
+        return context, system_tokens, reply
+
     def get_pr_content(self) -> str:
         """Get the PR content."""
         resp = requests.get(
@@ -213,9 +268,8 @@ class GitHubChatGPTPullRequestReviewer:
 
     def get_diff(self) -> Dict[str, str]:
         """Get Diff content as a mapping of filename to diff text."""
-        _ = self.gh_api.get_repo(self.gh_repo_name).get_pull(
-            int(self.gh_pr_id)
-        )
+        repo = self.gh_api.get_repo(cast(str, self.gh_repo_name))
+        _ = repo.get_pull(int(cast(str, self.gh_pr_id)))
 
         content = self.get_pr_content()
         if not content.strip():
@@ -274,16 +328,15 @@ class GitHubChatGPTPullRequestReviewer:
 
     def _call_openai_responses(self, system_text: str, user_text: str) -> str:
         """Call OpenAI Responses API for reasoning models."""
-        kwargs: Dict[str, Any] = {
-            'model': self.openai_model,
-            'reasoning': {'effort': self.openai_reasoning_effort},
-            'max_output_tokens': self.openai_max_completion_tokens,
-            'input': [
+        rsp = self._openai.responses.create(
+            model=self.openai_model,
+            reasoning={'effort': self.openai_reasoning_effort},
+            max_output_tokens=self.openai_max_completion_tokens,
+            input=[
                 {'role': 'system', 'content': system_text},
                 {'role': 'user', 'content': user_text},
             ],
-        }
-        rsp = self._openai.responses.create(**kwargs)
+        )
         text = getattr(rsp, 'output_text', None)
         if not text:
             try:
@@ -299,7 +352,7 @@ class GitHubChatGPTPullRequestReviewer:
         return text
 
     def _review_one(self, message_diff: str) -> str:
-        """Review a single file diff."""
+        """Review a single file diff chunk."""
         sys = self.chatgpt_initial_instruction
         want_reason = self._want_reasoning()
 
@@ -316,17 +369,48 @@ class GitHubChatGPTPullRequestReviewer:
                     return self._call_openai_chat(
                         sys, message_diff, use_completion_tokens=True
                     )
-                except Exception as e_openai:
-                    print('WARNING:\n', e_openai)
+                except Exception:
+                    return ''
             try:
                 if want_reason:
                     return self._call_openai_chat(
                         sys, message_diff, use_completion_tokens=True
                     )
                 return self._call_openai_responses(sys, message_diff)
-            except Exception as e_openai:
-                print('WARNING:\n', e_openai)
+            except Exception:
                 raise
+
+    def _review_file_in_chunks(
+        self, filename: str, diff: str
+    ) -> Tuple[str, bool]:
+        """
+        Review a file diff with token-aware chunking.
+
+        Returns (combined_review, was_chunked).
+        """
+        ctx_max, sys_tokens, reply_tokens = self._token_budgets()
+        buffer_tokens = 512
+        wrapper = f'file:\n```{filename}```\ndiff:\n```'
+        wrapper_end = '```'
+        overhead = _estimate_tokens(wrapper) + _estimate_tokens(wrapper_end)
+        budget = max(1, ctx_max - sys_tokens - reply_tokens - buffer_tokens)
+        budget = max(1, budget - overhead)
+
+        diff_tokens = _estimate_tokens(diff)
+        if diff_tokens <= budget:
+            msg = f'file:\n```{filename}```\ndiff:\n```{diff}```'
+            return self._review_one(msg).strip(), False
+
+        parts = _chunk_by_lines(diff, budget)
+        out: List[str] = []
+        total = len(parts)
+        for i, part in enumerate(parts, start=1):
+            hdr = f'Part {i}/{total}'
+            msg = f'file:\n```{filename}```\ndiff ({hdr}):\n```{part}```'
+            chunk_review = self._review_one(msg).strip()
+            if chunk_review:
+                out.append(f'**{hdr}**\n\n{chunk_review}')
+        return '\n\n'.join(out) if out else '', True
 
     def pr_review(self, pr_diff: Dict[str, str]) -> List[str]:
         """Call the PR Review."""
@@ -335,15 +419,37 @@ class GitHubChatGPTPullRequestReviewer:
 
         results: List[str] = []
         for filename, diff in pr_diff.items():
+            if _is_deleted_file(diff):
+                results.append(
+                    f'### {filename}\n\n_File deleted; no review._\n\n---'
+                )
+                continue
+
             message_diff = f'file:\n```{filename}```\ndiff:\n```{diff}```'
             print(
                 'Estimated tokens:',
-                int(len(self.chatgpt_initial_instruction + message_diff) / 4),
+                int(
+                    (
+                        _estimate_tokens(self.chatgpt_initial_instruction)
+                        + _estimate_tokens(message_diff)
+                    )
+                ),
             )
             try:
-                content = self._review_one(message_diff).strip()
+                content, was_chunked = self._review_file_in_chunks(
+                    filename, diff
+                )
                 if not content:
                     content = '_No content returned by model._'
+
+                if was_chunked:
+                    note = (
+                        '> Note: Too many changes in this file; the diff was '
+                        'split into parts due to model limits. Consider '
+                        'smaller PRs to make review easier.'
+                    )
+                    content = f'{note}\n\n{content}'
+
                 results.append(f'### {filename}\n\n{content}\n\n---')
             except Exception as e:
                 results.append(
@@ -354,8 +460,8 @@ class GitHubChatGPTPullRequestReviewer:
 
     def comment_review(self, review: List[str]) -> None:
         """Create a comment with the review content."""
-        repo = self.gh_api.get_repo(self.gh_repo_name)
-        pr = repo.get_pull(int(self.gh_pr_id))
+        repo = self.gh_api.get_repo(cast(str, self.gh_repo_name))
+        pr = repo.get_pull(int(cast(str, self.gh_pr_id)))
         comment = (
             '# OSL ChatGPT Reviewer\n\n'
             '*NOTE: This is generated by an AI program, so some '
