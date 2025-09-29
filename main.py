@@ -157,26 +157,39 @@ class RedactingFormatter(logging.Formatter):
 def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
     """Return regex patterns used to redact sensitive info in logs."""
     return [
-        # JSON payload fields that may contain prompts/diffs
+        # Only redact the remainder of the "Request options:" line.
+        (
+            re.compile(r'(?m)^(Request options:\s*)(.*)$'),
+            r'\1[REDACTED]',
+        ),
+        # Fallbacks if the SDK formats change.
         (
             re.compile(
-                r'("input"\s*:\s*)\[(?:.|\n)*?\]', re.IGNORECASE | re.S
+                r"(['\"]json_data['\"]\s*:\s*)\{(?:.|\n)*?\}",
+                re.I | re.S,
             ),
             r'\1[REDACTED]',
         ),
         (
             re.compile(
-                r'("messages"\s*:\s*)\[(?:.|\n)*?\]',
-                re.IGNORECASE | re.S,
+                r"(['\"]input['\"]\s*:\s*)\[(?:.|\n)*?\]",
+                re.I | re.S,
             ),
             r'\1[REDACTED]',
         ),
-        # Triple-backticked blocks (diffs, prompts)
+        (
+            re.compile(
+                r"(['\"]messages['\"]\s*:\s*)\[(?:.|\n)*?\]",
+                re.I | re.S,
+            ),
+            r'\1[REDACTED]',
+        ),
+        # Triple-backticked blocks (diffs/prompts).
         (
             re.compile(r'```.*?```', re.S),
             '```[REDACTED]```',
         ),
-        # Cookies in header lines and tuple-like header dumps
+        # Headers/cookies/org/project identifiers.
         (
             re.compile(r'(?im)^set-cookie:.*$', re.I | re.M),
             'Set-Cookie: [REDACTED]',
@@ -185,7 +198,6 @@ def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
             re.compile(r"('set-cookie'\s*,\s*)'[^']*'", re.I),
             r"\1'[REDACTED]'",
         ),
-        # OpenAI org/project values in tuple-like header dumps
         (
             re.compile(
                 r"('openai-(?:organization|project)'\s*,\s*)'[^']*'",
@@ -193,20 +205,18 @@ def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
             ),
             r"\1'[REDACTED]'",
         ),
-        # Authorization/API key patterns (generic)
+        # Full-line value redaction; preserve optional surrounding quotes.
         (
-            re.compile(
-                r'(authorization\s*[:=]\s*)([\'"]?)[^\s\'"]+',
-                re.I,
-            ),
-            r'\1\2[REDACTED]',
+            re.compile(r'(?im)^(authorization\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
         ),
         (
-            re.compile(
-                r'(api[_-]?key\s*[:=]\s*)([\'"]?)[A-Za-z0-9._-]+',
-                re.I,
-            ),
-            r'\1\2[REDACTED]',
+            re.compile(r'(?im)^(api[_-]?key\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
+        ),
+        (
+            re.compile(r'(?im)^(idempotency_key\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
         ),
     ]
 
