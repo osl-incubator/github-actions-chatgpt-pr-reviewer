@@ -401,14 +401,15 @@ class GitHubChatGPTPullRequestReviewer:
         except Exception as e:
             self._log.exception(f'Responses API call failed:\n{e}')
             raise
-        text = getattr(rsp, 'output_text', None)
+        text = getattr(rsp, 'output_text', '')
         if not text:
             try:
                 text = ''.join(
                     (
-                        block.text
-                        for item in getattr(rsp, 'output', [])
-                        for block in getattr(item, 'content', [])
+                        getattr(block, 'text', '')
+                        for item in getattr(rsp, 'output', {})
+                        for block in getattr(item, 'content', {})
+                        if item and block
                     )
                 )
             except Exception as e:
