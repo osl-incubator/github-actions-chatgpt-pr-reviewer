@@ -4,8 +4,9 @@ import fnmatch
 import html
 import logging
 import os
+import re
 
-from typing import Any, Dict, List, Tuple, cast
+from typing import Any, Dict, List, Pattern, Tuple, cast
 
 import requests
 
@@ -134,6 +135,82 @@ def _chunk_by_lines(text: str, max_tokens: int) -> List[str]:
     return chunks
 
 
+class RedactingFormatter(logging.Formatter):
+    """Formatter that redacts sensitive data via regex substitutions."""
+
+    def __init__(
+        self,
+        fmt: str,
+        patterns: List[Tuple[Pattern[str], str]],
+    ) -> None:
+        super().__init__(fmt)
+        self._patterns = patterns
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log message."""
+        msg = super().format(record)
+        for pat, repl in self._patterns:
+            msg = pat.sub(repl, msg)
+        return msg
+
+
+def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
+    """Return regex patterns used to redact sensitive info in logs."""
+    return [
+        # JSON payload fields that may contain prompts/diffs
+        (
+            re.compile(
+                r'("input"\s*:\s*)\[(?:.|\n)*?\]', re.IGNORECASE | re.S
+            ),
+            r'\1[REDACTED]',
+        ),
+        (
+            re.compile(
+                r'("messages"\s*:\s*)\[(?:.|\n)*?\]',
+                re.IGNORECASE | re.S,
+            ),
+            r'\1[REDACTED]',
+        ),
+        # Triple-backticked blocks (diffs, prompts)
+        (
+            re.compile(r'```.*?```', re.S),
+            '```[REDACTED]```',
+        ),
+        # Cookies in header lines and tuple-like header dumps
+        (
+            re.compile(r'(?im)^set-cookie:.*$', re.I | re.M),
+            'Set-Cookie: [REDACTED]',
+        ),
+        (
+            re.compile(r"('set-cookie'\s*,\s*)'[^']*'", re.I),
+            r"\1'[REDACTED]'",
+        ),
+        # OpenAI org/project values in tuple-like header dumps
+        (
+            re.compile(
+                r"('openai-(?:organization|project)'\s*,\s*)'[^']*'",
+                re.I,
+            ),
+            r"\1'[REDACTED]'",
+        ),
+        # Authorization/API key patterns (generic)
+        (
+            re.compile(
+                r'(authorization\s*[:=]\s*)([\'"]?)[^\s\'"]+',
+                re.I,
+            ),
+            r'\1\2[REDACTED]',
+        ),
+        (
+            re.compile(
+                r'(api[_-]?key\s*[:=]\s*)([\'"]?)[A-Za-z0-9._-]+',
+                re.I,
+            ),
+            r'\1\2[REDACTED]',
+        ),
+    ]
+
+
 class GitHubChatGPTPullRequestReviewer:
     """GitHubChatGPTPullRequestReviewer class."""
 
@@ -145,13 +222,19 @@ class GitHubChatGPTPullRequestReviewer:
         self._config_openai()
 
     def _setup_logging(self) -> None:
-        """Configure the logger."""
+        """Configure the logger with redaction."""
         level = os.getenv('LOG_LEVEL', 'INFO').upper()
+        fmt = '%(levelname)s %(message)s'
         logging.basicConfig(
             level=getattr(logging, level, logging.INFO),
-            format='%(levelname)s %(message)s',
+            format=fmt,
         )
         self._log = logging.getLogger(__name__)
+
+        patterns = _redaction_patterns()
+        root = logging.getLogger()
+        for h in root.handlers:
+            h.setFormatter(RedactingFormatter(fmt, patterns))
 
     def _config_gh(self) -> None:
         """Configure GitHub context."""
