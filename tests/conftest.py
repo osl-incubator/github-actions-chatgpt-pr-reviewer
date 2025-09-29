@@ -33,6 +33,7 @@ def load_env_from_dotenv() -> None:
         if path.exists():
             load_dotenv(path.as_posix(), override=False)
             break
+    os.environ['LOG_LEVEL'] = 'DEBUG'
 
 
 @pytest.fixture(scope='session')
