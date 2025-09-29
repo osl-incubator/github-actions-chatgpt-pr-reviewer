@@ -358,34 +358,44 @@ class GitHubChatGPTPullRequestReviewer:
 
         Some models require max_completion_tokens (reasoning).
         """
-        kwargs: Dict[str, Any] = {
+        gpt_args: Dict[str, Any] = {
             'model': self.openai_model,
-            'messages': [
-                {'role': 'system', 'content': system_text},
-                {'role': 'user', 'content': user_text},
-            ],
         }
         if use_completion_tokens:
-            kwargs['max_completion_tokens'] = self.openai_max_completion_tokens
+            gpt_args['max_completion_tokens'] = (
+                self.openai_max_completion_tokens
+            )
         else:
-            kwargs['max_tokens'] = self.openai_max_tokens
+            gpt_args['max_tokens'] = self.openai_max_tokens
 
         if not use_completion_tokens:
-            kwargs['temperature'] = self.openai_temperature
+            gpt_args['temperature'] = self.openai_temperature
 
-        completion = self._openai.chat.completions.create(**kwargs)
+        print('GPT params:', gpt_args)
+
+        gpt_args['messages'] = [
+            {'role': 'system', 'content': system_text},
+            {'role': 'user', 'content': user_text},
+        ]
+
+        completion = self._openai.chat.completions.create(**gpt_args)
         return completion.choices[0].message.content or ''
 
     def _call_openai_responses(self, system_text: str, user_text: str) -> str:
         """Call OpenAI Responses API for reasoning models."""
-        rsp = self._openai.responses.create(
+        gpt_args = dict(
             model=self.openai_model,
             reasoning={'effort': self.openai_reasoning_effort},
             max_output_tokens=self.openai_max_completion_tokens,
+        )
+        print('GPT params:', gpt_args)
+
+        rsp = self._openai.responses.create(
             input=[
                 {'role': 'system', 'content': system_text},
                 {'role': 'user', 'content': user_text},
             ],
+            **gpt_args,
         )
         text = getattr(rsp, 'output_text', None)
         if not text:
