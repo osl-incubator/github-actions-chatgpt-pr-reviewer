@@ -157,12 +157,12 @@ class RedactingFormatter(logging.Formatter):
 def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
     """Return regex patterns used to redact sensitive info in logs."""
     return [
-        # 1) Whole-line SDK payload redaction (most robust).
+        # Only redact the remainder of the "Request options:" line.
         (
-            re.compile(r'(Request options:\s).*', re.S),
+            re.compile(r'(?m)^(Request options:\s*)(.*)$'),
             r'\1[REDACTED]',
         ),
-        # 2) Fallbacks if the SDK formats change.
+        # Fallbacks if the SDK formats change.
         (
             re.compile(
                 r"(['\"]json_data['\"]\s*:\s*)\{(?:.|\n)*?\}",
@@ -184,12 +184,12 @@ def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
             ),
             r'\1[REDACTED]',
         ),
-        # 3) Triple-backticked blocks (diffs/prompts).
+        # Triple-backticked blocks (diffs/prompts).
         (
             re.compile(r'```.*?```', re.S),
             '```[REDACTED]```',
         ),
-        # 4) Headers/cookies/org/project identifiers.
+        # Headers/cookies/org/project identifiers.
         (
             re.compile(r'(?im)^set-cookie:.*$', re.I | re.M),
             'Set-Cookie: [REDACTED]',
@@ -205,27 +205,18 @@ def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
             ),
             r"\1'[REDACTED]'",
         ),
-        # 5) Idempotency keys and generic auth/api-key shapes.
+        # Full-line value redaction; preserve optional surrounding quotes.
         (
-            re.compile(
-                r'(idempotency_key\s*[:=]\s*)([\'"]?)[A-Za-z0-9._-]+',
-                re.I,
-            ),
-            r'\1\2[REDACTED]',
+            re.compile(r'(?im)^(authorization\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
         ),
         (
-            re.compile(
-                r'(authorization\s*[:=]\s*)([\'"]?)[^\s\'"]+',
-                re.I,
-            ),
-            r'\1\2[REDACTED]',
+            re.compile(r'(?im)^(api[_-]?key\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
         ),
         (
-            re.compile(
-                r'(api[_-]?key\s*[:=]\s*)([\'"]?)[A-Za-z0-9._-]+',
-                re.I,
-            ),
-            r'\1\2[REDACTED]',
+            re.compile(r'(?im)^(idempotency_key\s*[:=]\s*)([\'"]?)(.*)$'),
+            r'\1\2[REDACTED]\2',
         ),
     ]
 
