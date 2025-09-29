@@ -335,12 +335,9 @@ class GitHubChatGPTPullRequestReviewer:
         self.openai_max_tokens = int(
             os.environ.get('OPENAI_MAX_TOKENS', str(out_default))
         )
-        # IMPORTANT: default completion budget comes from model spec,
-        # not from OPENAI_MAX_TOKENS.
         self.openai_max_completion_tokens = int(
             os.environ.get(
-                'OPENAI_MAX_COMPLETION_TOKENS',
-                str(out_default),
+                'OPENAI_MAX_COMPLETION_TOKENS', str(self.openai_max_tokens)
             )
         )
         self.openai_max_input_tokens = int(
@@ -393,11 +390,17 @@ class GitHubChatGPTPullRequestReviewer:
 
         self._ctx_default = ctx_default
         self._out_default = out_default
-        self._log.debug(
-            'Model limits: ctx_default=%s out_default=%s',
-            ctx_default,
-            out_default,
-        )
+
+        if (
+            self._want_reasoning()
+            and self.openai_max_completion_tokens < self._out_default
+        ):
+            self._log.warning(
+                'Configured max_output_tokens=%s is below model default=%s; '
+                'reviews may truncate.',
+                self.openai_max_completion_tokens,
+                self._out_default,
+            )
 
     def _want_reasoning(self) -> bool:
         """Return True if reasoning mode should be used."""
@@ -539,7 +542,7 @@ class GitHubChatGPTPullRequestReviewer:
         self._log_chat_meta(completion)
         return completion.choices[0].message.content or ''
 
-    def _call_openai_responses(self, system_text: str, user_text: str) -> str:
+    def _call_openai_responses(self, system_text: str, user_text: str) -> str:  # noqa: PLR0912
         """Call OpenAI Responses API for reasoning models."""
         gpt_args = dict(
             model=self.openai_model,
@@ -556,24 +559,65 @@ class GitHubChatGPTPullRequestReviewer:
                 **gpt_args,
             )
         except Exception as e:
-            self._log.exception('Responses API call failed: %s', str(e))
+            self._log.exception('Responses API call failed: %s', e)
             raise
 
-        self._log_responses_meta(rsp)
+        usage = getattr(rsp, 'usage', None)
+        in_tok = getattr(usage, 'input_tokens', None)
+        out_tok = getattr(usage, 'output_tokens', None)
+        tot_tok = getattr(usage, 'total_tokens', None)
+        if in_tok is not None and out_tok is not None:
+            self._log.debug(
+                'Resp usage: input=%s output=%s total=%s',
+                in_tok,
+                out_tok,
+                tot_tok,
+            )
+
+        status = getattr(rsp, 'status', '')
+        rsp_id = getattr(rsp, 'id', '')
+        if status:
+            self._log.debug('Resp status=%s id=%s', status, rsp_id)
+
+        kinds: List[str] = []
+        try:
+            for item in getattr(rsp, 'output', {}) or {}:
+                kind = getattr(item, 'type', '')
+                if kind:
+                    kinds.append(kind)
+        except Exception as e:
+            self._log.debug(f'Error: {e}')
+
+        if kinds:
+            self._log.debug('Resp output item types: %s', kinds)
+
         text = getattr(rsp, 'output_text', '')
         if not text:
             self._log.debug('No output_text; attempting to join blocks')
             try:
-                text = ''.join(
-                    (
-                        getattr(block, 'text', '')
-                        for item in getattr(rsp, 'output', []) or []
-                        for block in getattr(item, 'content', []) or []
-                    )
-                )
+                pieces: List[str] = []
+                for item in getattr(rsp, 'output', None) or []:
+                    for block in getattr(item, 'content', None) or []:
+                        s = getattr(block, 'text', '')
+                        if s:
+                            pieces.append(s)
+                text = ''.join(pieces)
             except Exception as e:
                 self._log.exception('Failed to parse Responses output: %s', e)
                 text = ''
+
+        if not text:
+            self._log.warning(
+                'Empty output with status "%s" (out=%s, limit=%s)',
+                status or 'unknown',
+                out_tok,
+                self.openai_max_completion_tokens,
+            )
+            note = (
+                '_Model output was empty or truncated. Increase '
+                'OPENAI_MAX_COMPLETION_TOKENS or split the diff._'
+            )
+            return note
 
         return text
 

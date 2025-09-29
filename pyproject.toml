@@ -46,6 +46,13 @@ pymdown-extensions = ">=10.7.1"
 testpaths = [
     "tests",
 ]
+log_cli = true
+log_cli_level = "DEBUG"
+log_cli_format = "%(levelname)s %(message)s"
+log_cli_date_format = "%H:%M:%S"
+# Also show logs on failure summaries:
+log_level = "DEBUG"
+markers = "integration: real OpenAI / GitHub integration tests (no mocks)"
 
 [tool.mypy]
 python_version = "3.10"

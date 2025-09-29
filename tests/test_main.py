@@ -52,7 +52,6 @@ def reviewer(
     return main.GitHubChatGPTPullRequestReviewer()
 
 
-@pytest.mark.integration
 def test_get_diff_returns_mapping(
     reviewer: main.GitHubChatGPTPullRequestReviewer,
 ) -> None:
@@ -64,7 +63,6 @@ def test_get_diff_returns_mapping(
         assert isinstance(diff, str) and diff.strip()
 
 
-@pytest.mark.integration
 def test_pr_review_generates_output(
     reviewer: main.GitHubChatGPTPullRequestReviewer,
 ) -> None:
@@ -79,9 +77,9 @@ def test_pr_review_generates_output(
         assert 'LGTM! (No changes detected in diff)' in text
     else:
         assert '### ' in text
+    assert 'No content returned by model' not in text
 
 
-@pytest.mark.integration
 def test_prompt_includes_extra_criteria_if_set() -> None:
     """Test prompt_includes_extra_criteria_if_set."""
     extra = os.getenv('OPENAI_EXTRA_CRITERIA')
@@ -97,7 +95,6 @@ def test_prompt_includes_extra_criteria_if_set() -> None:
             assert f'- {item}' in sys_prompt
 
 
-@pytest.mark.integration
 def test_pr_review_adds_note_when_chunked(
     require_openai: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -119,7 +116,6 @@ def test_pr_review_adds_note_when_chunked(
     assert '_No content returned by model._' not in blob
 
 
-@pytest.mark.integration
 def test_pr_review_no_note_when_small(
     require_openai: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -141,7 +137,6 @@ def test_pr_review_no_note_when_small(
     assert '### pkg/small.py' in blob
 
 
-@pytest.mark.integration
 def test_pr_review_marks_deleted_file(
     require_openai: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
