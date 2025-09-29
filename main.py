@@ -2,6 +2,7 @@
 
 import fnmatch
 import html
+import logging
 import os
 
 from typing import Any, Dict, List, Tuple, cast
@@ -10,13 +11,6 @@ import requests
 
 from github import Auth, Github
 from openai import OpenAI
-
-
-def _as_bool(val: str | None, default: bool = False) -> bool:
-    """Parse a boolean-like string."""
-    if val is None:
-        return default
-    return str(val).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def _is_reasoning_model(model: str) -> bool:
@@ -112,16 +106,6 @@ def _model_limits(model: str) -> Tuple[int, int]:  # noqa: PLR0911, PLR0912
     return 128_000, 16_384
 
 
-def _model_context_tokens(model: str) -> int:
-    """
-    Return an approximate context window for a model.
-
-    Values come from _model_limits and can be overridden by env.
-    """
-    ctx, _ = _model_limits(model)
-    return ctx
-
-
 def _chunk_by_lines(text: str, max_tokens: int) -> List[str]:
     """Split text into chunks that fit under max_tokens by line groups."""
     lines = text.splitlines(keepends=True)
@@ -156,8 +140,18 @@ class GitHubChatGPTPullRequestReviewer:
     def __init__(self) -> None:
         """Initialize the class."""
         self.exclude_globs: List[str] = []
+        self._setup_logging()
         self._config_gh()
         self._config_openai()
+
+    def _setup_logging(self) -> None:
+        """Configure the logger."""
+        level = os.getenv('LOG_LEVEL', 'INFO').upper()
+        logging.basicConfig(
+            level=getattr(logging, level, logging.INFO),
+            format='%(levelname)s %(message)s',
+        )
+        self._log = logging.getLogger(__name__)
 
     def _config_gh(self) -> None:
         """Configure GitHub context."""
@@ -307,10 +301,17 @@ class GitHubChatGPTPullRequestReviewer:
 
     def get_pr_content(self) -> str:
         """Get the PR content."""
-        resp = requests.get(
-            self.gh_pr_url, headers=self.gh_headers, timeout=60
-        )
+        try:
+            resp = requests.get(
+                self.gh_pr_url, headers=self.gh_headers, timeout=60
+            )
+        except Exception as e:
+            self._log.exception(f'GitHub request failed:\n{e}')
+            raise
         if resp.status_code != 200:
+            self._log.error(
+                'GitHub API error %s: %s', resp.status_code, resp.text[:500]
+            )
             raise RuntimeError(
                 f'GitHub API error {resp.status_code}: {resp.text}'
             )
@@ -358,27 +359,27 @@ class GitHubChatGPTPullRequestReviewer:
 
         Some models require max_completion_tokens (reasoning).
         """
-        gpt_args: Dict[str, Any] = {
-            'model': self.openai_model,
-        }
+        gpt_args: Dict[str, Any] = {'model': self.openai_model}
         if use_completion_tokens:
             gpt_args['max_completion_tokens'] = (
                 self.openai_max_completion_tokens
             )
         else:
             gpt_args['max_tokens'] = self.openai_max_tokens
-
         if not use_completion_tokens:
             gpt_args['temperature'] = self.openai_temperature
 
-        print('GPT params:', gpt_args)
+        self._log.info('GPT params: %s', gpt_args)
 
         gpt_args['messages'] = [
             {'role': 'system', 'content': system_text},
             {'role': 'user', 'content': user_text},
         ]
-
-        completion = self._openai.chat.completions.create(**gpt_args)
+        try:
+            completion = self._openai.chat.completions.create(**gpt_args)
+        except Exception as e:
+            self._log.exception(f'Chat completion failed:\n{e}')
+            raise
         return completion.choices[0].message.content or ''
 
     def _call_openai_responses(self, system_text: str, user_text: str) -> str:
@@ -388,15 +389,18 @@ class GitHubChatGPTPullRequestReviewer:
             reasoning={'effort': self.openai_reasoning_effort},
             max_output_tokens=self.openai_max_completion_tokens,
         )
-        print('GPT params:', gpt_args)
-
-        rsp = self._openai.responses.create(
-            input=[
-                {'role': 'system', 'content': system_text},
-                {'role': 'user', 'content': user_text},
-            ],
-            **gpt_args,
-        )
+        self._log.info('GPT params: %s', gpt_args)
+        try:
+            rsp = self._openai.responses.create(
+                input=[
+                    {'role': 'system', 'content': system_text},
+                    {'role': 'user', 'content': user_text},
+                ],
+                **gpt_args,
+            )
+        except Exception as e:
+            self._log.exception(f'Responses API call failed:\n{e}')
+            raise
         text = getattr(rsp, 'output_text', None)
         if not text:
             try:
@@ -407,7 +411,8 @@ class GitHubChatGPTPullRequestReviewer:
                         for block in getattr(item, 'content', [])
                     )
                 )
-            except Exception:
+            except Exception as e:
+                self._log.exception(f'Failed to parse Responses output:\n{e}')
                 text = ''
         return text
 
@@ -415,7 +420,6 @@ class GitHubChatGPTPullRequestReviewer:
         """Review a single file diff chunk."""
         sys = self.chatgpt_initial_instruction
         want_reason = self._want_reasoning()
-
         try:
             if want_reason:
                 return self._call_openai_responses(sys, message_diff)
@@ -424,12 +428,16 @@ class GitHubChatGPTPullRequestReviewer:
             )
         except Exception as e:
             msg = str(e)
+            self._log.exception('Primary review attempt failed')
             if 'max_tokens' in msg and 'max_completion_tokens' in msg:
                 try:
                     return self._call_openai_chat(
                         sys, message_diff, use_completion_tokens=True
                     )
-                except Exception:
+                except Exception as e2:
+                    self._log.exception(
+                        f'Retry with completion_tokens failed:\n{e}\n--\n{e2}'
+                    )
                     return ''
             try:
                 if want_reason:
@@ -437,7 +445,10 @@ class GitHubChatGPTPullRequestReviewer:
                         sys, message_diff, use_completion_tokens=True
                     )
                 return self._call_openai_responses(sys, message_diff)
-            except Exception:
+            except Exception as e3:
+                self._log.exception(
+                    f'Fallback review attempt failed:\n{e}\n--\n{e3}'
+                )
                 raise
 
     def _review_file_in_chunks(
@@ -461,6 +472,12 @@ class GitHubChatGPTPullRequestReviewer:
             msg = f'file:\n```{filename}```\ndiff:\n```{diff}```'
             return self._review_one(msg).strip(), False
 
+        self._log.info(
+            'Chunking "%s": diff_tokens=%s budget=%s',
+            filename,
+            diff_tokens,
+            budget,
+        )
         parts = _chunk_by_lines(diff, budget)
         out: List[str] = []
         total = len(parts)
@@ -486,13 +503,11 @@ class GitHubChatGPTPullRequestReviewer:
                 continue
 
             message_diff = f'file:\n```{filename}```\ndiff:\n```{diff}```'
-            print(
-                'Estimated tokens:',
+            self._log.info(
+                'Estimated tokens: %s',
                 int(
-                    (
-                        _estimate_tokens(self.chatgpt_initial_instruction)
-                        + _estimate_tokens(message_diff)
-                    )
+                    _estimate_tokens(self.chatgpt_initial_instruction)
+                    + _estimate_tokens(message_diff)
                 ),
             )
             try:
@@ -500,6 +515,7 @@ class GitHubChatGPTPullRequestReviewer:
                     filename, diff
                 )
                 if not content:
+                    self._log.warning('Empty model output for "%s"', filename)
                     content = '_No content returned by model._'
 
                 if was_chunked:
@@ -512,6 +528,7 @@ class GitHubChatGPTPullRequestReviewer:
 
                 results.append(f'### {filename}\n\n{content}\n\n---')
             except Exception as e:
+                self._log.exception('Review failed for "%s"', filename)
                 results.append(
                     f'### {filename}\nChatGPT was not able to review the file.'
                     f' Error: {html.escape(str(e))}'
@@ -530,7 +547,7 @@ class GitHubChatGPTPullRequestReviewer:
         try:
             pr.create_issue_comment(comment)
         except Exception as e:
-            print(f'[WARN] Could not post PR comment: {e}')
+            self._log.exception(f'Failed to post PR comment:\n{e}')
 
     def run(self) -> None:
         """Run the PR Reviewer."""
