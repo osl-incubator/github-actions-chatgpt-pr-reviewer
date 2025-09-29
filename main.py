@@ -157,12 +157,13 @@ class RedactingFormatter(logging.Formatter):
 def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
     """Return regex patterns used to redact sensitive info in logs."""
     return [
-        # Only redact the remainder of the "Request options:" line.
+        # Redact the remainder of the line containing "Request options:",
+        # keeping any prefix like "DEBUG ".
         (
-            re.compile(r'(?m)^(Request options:\s*)(.*)$'),
+            re.compile(r'(?m)^(.*?\bRequest options:\s*)(.*)$'),
             r'\1[REDACTED]',
         ),
-        # Fallbacks if the SDK formats change.
+        # Fallbacks if SDK formatting changes.
         (
             re.compile(
                 r"(['\"]json_data['\"]\s*:\s*)\{(?:.|\n)*?\}",
@@ -205,7 +206,7 @@ def _redaction_patterns() -> List[Tuple[Pattern[str], str]]:
             ),
             r"\1'[REDACTED]'",
         ),
-        # Full-line value redaction; preserve optional surrounding quotes.
+        # Preserve optional quotes while redacting full values.
         (
             re.compile(r'(?im)^(authorization\s*[:=]\s*)([\'"]?)(.*)$'),
             r'\1\2[REDACTED]\2',
@@ -245,6 +246,53 @@ class GitHubChatGPTPullRequestReviewer:
         root = logging.getLogger()
         for h in root.handlers:
             h.setFormatter(RedactingFormatter(fmt, patterns))
+
+    def _log_chat_meta(self, obj: Any) -> None:
+        """Log minimal metadata for Chat Completions."""
+        try:
+            usage = getattr(obj, 'usage', None)
+            if usage:
+                self._log.debug(
+                    'Chat usage: prompt=%s completion=%s total=%s',
+                    getattr(usage, 'prompt_tokens', None),
+                    getattr(usage, 'completion_tokens', None),
+                    getattr(usage, 'total_tokens', None),
+                )
+            choices = list(getattr(obj, 'choices', []) or [])
+            finish = [getattr(c, 'finish_reason', None) for c in choices]
+            self._log.debug('Chat finish_reasons: %s', finish)
+            if choices:
+                msg0 = getattr(choices[0], 'message', None)
+                if msg0 is not None:
+                    has_tools = bool(getattr(msg0, 'tool_calls', None))
+                    self._log.debug(
+                        'Chat first choice has_tools=%s', has_tools
+                    )
+        except Exception as e:
+            self._log.debug('Failed to log chat meta: %s', e)
+
+    def _log_responses_meta(self, rsp: Any) -> None:
+        """Log minimal metadata for Responses API."""
+        try:
+            usage = getattr(rsp, 'usage', None)
+            if usage:
+                self._log.debug(
+                    'Resp usage: input=%s output=%s total=%s',
+                    getattr(usage, 'input_tokens', None),
+                    getattr(usage, 'output_tokens', None),
+                    getattr(usage, 'total_tokens', None),
+                )
+            status = getattr(rsp, 'status', None)
+            rid = getattr(rsp, 'id', None)
+            self._log.debug('Resp status=%s id=%s', status, rid)
+            out = getattr(rsp, 'output', None)
+            if out is None:
+                self._log.debug('Resp output is None')
+            else:
+                types = [getattr(item, 'type', None) for item in out]
+                self._log.debug('Resp output item types: %s', types)
+        except Exception as e:
+            self._log.debug('Failed to log response meta: %s', e)
 
     def _config_gh(self) -> None:
         """Configure GitHub context."""
@@ -488,6 +536,7 @@ class GitHubChatGPTPullRequestReviewer:
         except Exception as e:
             self._log.exception('Chat completion failed: %s', str(e))
             raise
+        self._log_chat_meta(completion)
         return completion.choices[0].message.content or ''
 
     def _call_openai_responses(self, system_text: str, user_text: str) -> str:
@@ -509,25 +558,23 @@ class GitHubChatGPTPullRequestReviewer:
         except Exception as e:
             self._log.exception('Responses API call failed: %s', str(e))
             raise
+
+        self._log_responses_meta(rsp)
         text = getattr(rsp, 'output_text', '')
         if not text:
+            self._log.debug('No output_text; attempting to join blocks')
             try:
-                parts: List[str] = []
-                out = getattr(rsp, 'output', None)
-                if isinstance(out, list):
-                    for item in out:
-                        content = getattr(item, 'content', None)
-                        if isinstance(content, list):
-                            for block in content:
-                                txt = getattr(block, 'text', None)
-                                if isinstance(txt, str):
-                                    parts.append(txt)
-                text = ''.join(parts)
-            except Exception as e:
-                self._log.exception(
-                    'Failed to parse Responses output: %s', str(e)
+                text = ''.join(
+                    (
+                        getattr(block, 'text', '')
+                        for item in getattr(rsp, 'output', []) or []
+                        for block in getattr(item, 'content', []) or []
+                    )
                 )
+            except Exception as e:
+                self._log.exception('Failed to parse Responses output: %s', e)
                 text = ''
+
         return text
 
     def _review_one(self, message_diff: str) -> str:
