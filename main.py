@@ -194,9 +194,12 @@ class GitHubChatGPTPullRequestReviewer:
         self.openai_max_tokens = int(
             os.environ.get('OPENAI_MAX_TOKENS', str(out_default))
         )
+        # IMPORTANT: default completion budget comes from model spec,
+        # not from OPENAI_MAX_TOKENS.
         self.openai_max_completion_tokens = int(
             os.environ.get(
-                'OPENAI_MAX_COMPLETION_TOKENS', str(self.openai_max_tokens)
+                'OPENAI_MAX_COMPLETION_TOKENS',
+                str(out_default),
             )
         )
         self.openai_max_input_tokens = int(
@@ -249,6 +252,11 @@ class GitHubChatGPTPullRequestReviewer:
 
         self._ctx_default = ctx_default
         self._out_default = out_default
+        self._log.debug(
+            'Model limits: ctx_default=%s out_default=%s',
+            ctx_default,
+            out_default,
+        )
 
     def _want_reasoning(self) -> bool:
         """Return True if reasoning mode should be used."""
@@ -297,6 +305,13 @@ class GitHubChatGPTPullRequestReviewer:
             if want_reason
             else self.openai_max_tokens
         )
+        self._log.debug(
+            'Budgets resolved: context=%s system=%s reply=%s (reasoning=%s)',
+            context,
+            system_tokens,
+            reply,
+            want_reason,
+        )
         return context, system_tokens, reply
 
     def get_pr_content(self) -> str:
@@ -306,7 +321,7 @@ class GitHubChatGPTPullRequestReviewer:
                 self.gh_pr_url, headers=self.gh_headers, timeout=60
             )
         except Exception as e:
-            self._log.exception(f'GitHub request failed:\n{e}')
+            self._log.exception('GitHub request failed: %s', str(e))
             raise
         if resp.status_code != 200:
             self._log.error(
@@ -378,7 +393,7 @@ class GitHubChatGPTPullRequestReviewer:
         try:
             completion = self._openai.chat.completions.create(**gpt_args)
         except Exception as e:
-            self._log.exception(f'Chat completion failed:\n{e}')
+            self._log.exception('Chat completion failed: %s', str(e))
             raise
         return completion.choices[0].message.content or ''
 
@@ -399,21 +414,26 @@ class GitHubChatGPTPullRequestReviewer:
                 **gpt_args,
             )
         except Exception as e:
-            self._log.exception(f'Responses API call failed:\n{e}')
+            self._log.exception('Responses API call failed: %s', str(e))
             raise
         text = getattr(rsp, 'output_text', '')
         if not text:
             try:
-                text = ''.join(
-                    (
-                        getattr(block, 'text', '')
-                        for item in getattr(rsp, 'output', {})
-                        for block in getattr(item, 'content', {})
-                        if item and block
-                    )
-                )
+                parts: List[str] = []
+                out = getattr(rsp, 'output', None)
+                if isinstance(out, list):
+                    for item in out:
+                        content = getattr(item, 'content', None)
+                        if isinstance(content, list):
+                            for block in content:
+                                txt = getattr(block, 'text', None)
+                                if isinstance(txt, str):
+                                    parts.append(txt)
+                text = ''.join(parts)
             except Exception as e:
-                self._log.exception(f'Failed to parse Responses output:\n{e}')
+                self._log.exception(
+                    'Failed to parse Responses output: %s', str(e)
+                )
                 text = ''
         return text
 
@@ -429,7 +449,7 @@ class GitHubChatGPTPullRequestReviewer:
             )
         except Exception as e:
             msg = str(e)
-            self._log.exception('Primary review attempt failed')
+            self._log.exception('Primary review attempt failed: %s', msg)
             if 'max_tokens' in msg and 'max_completion_tokens' in msg:
                 try:
                     return self._call_openai_chat(
@@ -437,7 +457,7 @@ class GitHubChatGPTPullRequestReviewer:
                     )
                 except Exception as e2:
                     self._log.exception(
-                        f'Retry with completion_tokens failed:\n{e}\n--\n{e2}'
+                        'Retry with completion_tokens failed: %s', str(e2)
                     )
                     return ''
             try:
@@ -448,7 +468,7 @@ class GitHubChatGPTPullRequestReviewer:
                 return self._call_openai_responses(sys, message_diff)
             except Exception as e3:
                 self._log.exception(
-                    f'Fallback review attempt failed:\n{e}\n--\n{e3}'
+                    'Fallback review attempt failed: %s', str(e3)
                 )
                 raise
 
@@ -529,7 +549,9 @@ class GitHubChatGPTPullRequestReviewer:
 
                 results.append(f'### {filename}\n\n{content}\n\n---')
             except Exception as e:
-                self._log.exception('Review failed for "%s"', filename)
+                self._log.exception(
+                    'Review failed for "%s": %s', filename, str(e)
+                )
                 results.append(
                     f'### {filename}\nChatGPT was not able to review the file.'
                     f' Error: {html.escape(str(e))}'
@@ -548,7 +570,7 @@ class GitHubChatGPTPullRequestReviewer:
         try:
             pr.create_issue_comment(comment)
         except Exception as e:
-            self._log.exception(f'Failed to post PR comment:\n{e}')
+            self._log.exception('Failed to post PR comment: %s', str(e))
 
     def run(self) -> None:
         """Run the PR Reviewer."""
