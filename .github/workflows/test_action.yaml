@@ -24,7 +24,7 @@ jobs:
           openai_model: gpt-4o-mini
           openai_temperature: "0.5"
           openai_max_tokens: "2048"
-          openai_extra_criteria: |
+          prompt_extra_criteria: |
             prefer readable variable names;
             verify SOLID principle violations;
           # Use the runtime token, not a custom secret

@@ -82,10 +82,10 @@ def test_pr_review_generates_output(
 
 def test_prompt_includes_extra_criteria_if_set() -> None:
     """Test prompt_includes_extra_criteria_if_set."""
-    extra = os.getenv('OPENAI_EXTRA_CRITERIA')
+    extra = os.getenv('PROMPT_EXTRA_CRITERIA')
     if not extra:
         pytest.skip(
-            'OPENAI_EXTRA_CRITERIA not set; skipping prompt content check.'
+            'PROMPT_EXTRA_CRITERIA not set; skipping prompt content check.'
         )
 
     r = main.GitHubChatGPTPullRequestReviewer()
