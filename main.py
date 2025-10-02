@@ -357,13 +357,21 @@ class GitHubChatGPTPullRequestReviewer:
         self._openai: Any = OpenAI()
 
         extra_criteria = self._prepare_extra_criteria(
-            os.environ.get('OPENAI_EXTRA_CRITERIA', '').strip()
+            os.environ.get('PROMPT_EXTRA_CRITERIA', '').strip()
         )
+        prompt_project_intro = os.environ.get(
+            'PROMPT_PROJECT_INTRODUCTION',
+            '',
+        ).strip()
+
+        if prompt_project_intro:
+            prompt_project_intro = f'{prompt_project_intro}\n\n'
 
         self.chatgpt_initial_instruction = (
             'You are a GitHub PR reviewer bot. You will receive a PR diff. '
             'Write a short, high-signal review that focuses only on material '
             'risks.\n\n'
+            f'{prompt_project_intro}'
             'Prioritize, in order:\n'
             '- correctness / logic bugs\n'
             '- security and unsafe patterns\n'
@@ -384,8 +392,8 @@ class GitHubChatGPTPullRequestReviewer:
             '- Point the line number where the author should apply the '
             'change inside parenthesis, e.g. (L.123).\n'
             '- Do not summarize all the changes, just focus on your '
-            "suggestions to the PR's author. It should be short and "
-            'concise.\n\n'
+            "suggestions to the PR's author.\n'"
+            '- It should be as SHORT, CONCISE, and OBJECTIVE as possible.\n\n'
         )
 
         self._ctx_default = ctx_default

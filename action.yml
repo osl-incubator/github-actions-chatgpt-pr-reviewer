@@ -11,7 +11,9 @@ inputs:
     { description: "Temperature", required: false, default: "0.0" }
   openai_max_tokens:
     { description: "Max tokens", required: false, default: "8000" }
-  openai_extra_criteria:
+  prompt_project_introduction:
+    { description: "Prompt Project Introduction", required: false, default: "" }
+  prompt_extra_criteria:
     {
       description: "Extra criteria (; separated)",
       required: false,
@@ -57,7 +59,8 @@ runs:
         OPENAI_MODEL: ${{ inputs.openai_model }}
         OPENAI_TEMPERATURE: ${{ inputs.openai_temperature }}
         OPENAI_MAX_TOKENS: ${{ inputs.openai_max_tokens }}
-        OPENAI_EXTRA_CRITERIA: ${{ inputs.openai_extra_criteria }}
+        PROMPT_PROJECT_INTRODUCTION: ${{ inputs.prompt_project_introduction }}
+        PROMPT_EXTRA_CRITERIA: ${{ inputs.prompt_extra_criteria }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_PR_ID: ${{ inputs.github_pr_id }}
         OPENAI_REASONING: ${{ inputs.openai_reasoning }}
